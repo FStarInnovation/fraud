@@ -1,11 +1,11 @@
 // Сборка: самодостаточные HTML-страницы (скрипты, стили и шрифты внутри — работают без внешних CDN).
-//   dist/index.html     — весь сайт: первый экран, библиотека, схемы по порядку, финал
-//   dist/preview.html   — тот же контент без <html>/<head>/<body> (для превью-артефакта)
+//   docs/index.html     — весь сайт: первый экран, библиотека, схемы по порядку, финал (папка docs — её публикует GitHub Pages)
+//   docs/preview.html   — тот же контент без <html>/<head>/<body> (для превью-артефакта)
 import { build, transform } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const src = (p) => new URL('./src/' + p, import.meta.url);
-mkdirSync(new URL('./dist/', import.meta.url), { recursive: true });
+mkdirSync(new URL('./docs/', import.meta.url), { recursive: true });
 
 const PAGES = [
   { tpl: 'index.html', entry: 'js/main.js', out: 'index.html', preview: 'preview.html' },
@@ -50,7 +50,7 @@ ${body}
 </body>
 </html>
 `;
-  writeFileSync(new URL('./dist/' + page.out, import.meta.url), full);
-  writeFileSync(new URL('./dist/' + page.preview, import.meta.url), `${head}\n${body}\n`);
-  console.log(`dist/${page.out}`, kb(full), '| JS', kb(js), '| CSS', kb(css), '| шрифты', kb(fonts));
+  writeFileSync(new URL('./docs/' + page.out, import.meta.url), full);
+  writeFileSync(new URL('./docs/' + page.preview, import.meta.url), `${head}\n${body}\n`);
+  console.log(`docs/${page.out}`, kb(full), '| JS', kb(js), '| CSS', kb(css), '| шрифты', kb(fonts));
 }
