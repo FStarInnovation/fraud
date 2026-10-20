@@ -1,7 +1,6 @@
 // Сборка: самодостаточные HTML-страницы (скрипты, стили и шрифты внутри — работают без внешних CDN).
-//   dist/index.html        — главная: первый экран, библиотека, схема «Опережающие сделки»
-//   dist/suppression.html  — схема «Занижение цены перед крупной сделкой»
-//   dist/preview-*.html    — тот же контент без <html>/<head>/<body> (для превью-артефактов)
+//   dist/index.html     — весь сайт: первый экран, библиотека, схемы по порядку, финал
+//   dist/preview.html   — тот же контент без <html>/<head>/<body> (для превью-артефакта)
 import { build, transform } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
@@ -10,7 +9,6 @@ mkdirSync(new URL('./dist/', import.meta.url), { recursive: true });
 
 const PAGES = [
   { tpl: 'index.html', entry: 'js/main.js', out: 'index.html', preview: 'preview.html' },
-  { tpl: 'suppression.html', entry: 'js/main-suppression.js', out: 'suppression.html', preview: 'preview-suppression.html' },
 ];
 
 const css = (await transform(readFileSync(src('styles.css'), 'utf8'), { loader: 'css', minify: true, target: ['chrome100', 'safari15'] })).code;

@@ -91,6 +91,11 @@ button { font: inherit; color: inherit; }
 .keyfacts dt { font-size: clamp(28px, 3vw, 44px); font-weight: 660; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
 .keyfacts dd { margin-top: 8px; font-size: 14px; color: var(--fg-2); max-width: 26ch; text-wrap: pretty; }
 .final .more { margin-top: 28px; font-size: 15px; }
+/* вступление к схеме внутри одной страницы */
+.chapter.intro { border-top: 1px solid var(--line-2); padding-block: clamp(96px, 16vh, 180px) clamp(48px, 8vh, 88px); }
+.chapter.intro .eyebrow { margin-bottom: clamp(14px, 2vh, 22px); }
+.chapter.intro h2 { max-width: 16ch; }
+.chapter.intro .keyfacts { margin-top: clamp(32px, 5vh, 56px); }
 
 /* ---------- библиотека ---------- */
 .library { padding-block: clamp(56px, 10vh, 112px); border-top: 1px solid var(--line-2); }
