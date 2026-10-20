@@ -1,0 +1,21 @@
+{
+  "name": "tafs-schemes",
+  "version": "0.2.1",
+  "private": true,
+  "description": "ТАФС — библиотека схем манипулирования: scroll-story сайт (GSAP, Lenis, d3, number-flow, Canvas 2D)",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "d3-array": "3.2.4",
+    "d3-scale": "4.0.2",
+    "gsap": "3.15.0",
+    "lenis": "1.3.27",
+    "number-flow": "0.6.2"
+  },
+  "devDependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "esbuild": "0.28.2"
+  }
+}

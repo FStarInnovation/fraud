@@ -1,0 +1,166 @@
+<!--HEAD-->
+<title>Библиотека схем ТАФС</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Интерактивная библиотека схем манипулирования на бирже. Схема «опережающие сделки» шаг за шагом и то, как ТАФС её выявляет.">
+<style>
+/*FONTS*/
+/*CSS*/
+</style>
+<!--/HEAD-->
+<!--BODY-->
+<header class="nav" lang="ru">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top" aria-label="ТАФС, в начало">ТАФС <span>Атретек</span></a>
+    <nav class="nav-links" aria-label="Разделы">
+      <a href="#scheme">Схема</a>
+      <a href="#detect">Как находит ТАФС</a>
+      <a class="nav-cta" href="#demo">Демонстрация</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top" lang="ru">
+  <section class="hero">
+    <div class="wrap">
+      <h1>Показываем то, <br>что рынок скрывает.</h1>
+      <p class="lede">Библиотека недобросовестных практик на финансовом рынке. Схема развернётся у вас на глазах, а затем ТАФС разберёт её.</p>
+      <div class="hero-cta">
+        <a class="btn" href="#scheme" data-watch>Смотреть схему</a>
+        <a class="link" href="#detect">Как находит ТАФС</a>
+      </div>
+      <figure class="lens-wrap">
+        <canvas id="hero-canvas" aria-label="Биржевой график. Линза ТАФС подсвечивает скрытых участников и три схемы: опережающие сделки, спуфинг, разгон и сброс." role="img"></canvas>
+        <figcaption>Линза ТАФС проявляет участников и схемы, которых не видно на обычном графике. Наведите на график курсор.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="library" aria-labelledby="lib-h">
+    <div class="wrap lib-in">
+      <div>
+        <h2 id="lib-h">Библиотека недобросовестных практик</h2>
+        <p>Каждая практика собрана как модель торгов: заявки, сделки, цена и счета участников. Первая готова, остальные в работе.</p>
+      </div>
+      <ul class="chips">
+        <li><a class="chip on" href="#scheme">Опережающие сделки</a></li>
+        <li><span class="chip">Спуфинг и лейеринг <em>скоро</em></span></li>
+        <li><span class="chip">Сделки с самим собой <em>скоро</em></span></li>
+        <li><span class="chip">Разгон и сброс <em>скоро</em></span></li>
+        <li><span class="chip">Манипуляция ценой закрытия <em>скоро</em></span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="stage act-scheme" id="scheme" aria-label="Схема «Опережающие сделки», шаг за шагом">
+    <div class="pin">
+      <div class="cap" aria-hidden="true"><h2 class="cap-title">&nbsp;</h2><p class="cap-sub">&nbsp;</p></div>
+      <div class="dots">
+        <div class="dots-head"><button class="play" type="button" data-st="idle"></button><span class="act-name">Опережающие сделки</span><span class="dots-count"></span></div>
+        <div class="dots-row"></div>
+      </div>
+      <div class="panel chartp">
+        <canvas aria-hidden="true"></canvas>
+        <div class="legend" aria-hidden="true"><span><i class="sw sw-vol"></i>Рынок</span><span><i class="sw sw-trader"></i>Трейдер</span><span><i class="sw sw-bank"></i>Банк</span></div>
+      </div>
+      <div class="panel book" aria-hidden="true">
+        <div class="panel-title">Стакан заявок</div>
+        <div class="book-cols"><span>Цена</span><span>Акций</span></div>
+        <div class="book-asks"></div>
+        <div class="book-mid"><span class="mid-px">100,00</span><span class="mid-l">последняя сделка</span></div>
+        <div class="book-bids"></div>
+        <div class="book-foot">
+          <div class="bank-order" hidden>
+            <div class="bo-top"><span><i class="sw sw-bank"></i>Заявка банка</span><span class="bo-q"></span></div>
+            <div class="bo-bar"><i></i></div>
+          </div>
+          <div class="split" hidden>
+            <div class="split-top">Кому ушёл объём банка</div>
+            <div class="split-bar"><span class="seg seg-m"><i class="s-m"></i></span><span class="seg seg-t"><i class="s-t"></i></span></div>
+            <div class="split-leg"><span><i class="sw sw-vol"></i><span class="nm">Рынок</span> <b class="s-m-v"></b></span><span><i class="sw sw-trader"></i><span class="nm">Трейдер</span> <b class="s-t-v"></b></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="acc" aria-hidden="true">
+        <article class="card acc-trader">
+          <header><i class="sw sw-trader"></i><span class="long">Личный счёт трейдера</span><span class="short">Счёт трейдера</span></header>
+          <dl>
+            <div><dt>Акции</dt><dd><number-flow data-f="t-shares"></number-flow></dd></div>
+            <div data-slot="t-avg" data-on="false"><dt>Средняя цена</dt><dd><number-flow data-f="t-avg"></number-flow><span class="dash">—</span></dd></div>
+            <div data-slot="t-res" data-on="false" class="res"><dt>Результат</dt><dd><number-flow data-f="t-res"></number-flow><span class="dash">—</span></dd></div>
+          </dl>
+        </article>
+        <div class="leak" style="--a:0">
+          <svg viewBox="0 0 96 12" aria-hidden="true"><path d="M8 6 H92" fill="none" stroke="currentColor" stroke-width="1.25" stroke-dasharray="3 3"/><path d="M9 1.5 L3 6 L9 10.5" fill="none" stroke="currentColor" stroke-width="1.25"/></svg>
+          <span>знает о заявке</span>
+        </div>
+        <article class="card acc-bank">
+          <header><i class="sw sw-bank"></i>Банк <span class="intent" style="opacity:0">готовит покупку <span data-v="bankQtyFull">1 900 000</span></span></header>
+          <dl>
+            <div><dt>Куплено</dt><dd><number-flow data-f="b-qty"></number-flow></dd></div>
+            <div data-slot="b-avg" data-on="false"><dt>Средняя цена</dt><dd><number-flow data-f="b-avg"></number-flow><span class="dash">—</span></dd></div>
+            <div data-slot="b-mtm" data-on="false" class="mtm"><dt>Переоценка</dt><dd><number-flow data-f="b-mtm"></number-flow><span class="dash">—</span></dd></div>
+          </dl>
+        </article>
+      </div>
+    </div>
+    <ol class="sr-steps visually-hidden"></ol>
+  </section>
+
+  <section class="chapter" aria-labelledby="ch-h">
+    <div class="wrap">
+      <h2 id="ch-h">Теперь посмотрим глазами ТАФС.</h2>
+      <p>ТАФС рассчитывает тысячи метрик по сделкам, заявкам, участникам и рыночным событиям и анализирует их взаимосвязи, чтобы находить скрытые схемы манипулирования и мошенничества. Здесь семь проверок одной заявки, каждая видна на графике.</p>
+    </div>
+  </section>
+
+  <section class="stage act-detect" id="detect" aria-label="Как ТАФС выявляет схему, по шагам">
+    <div class="pin">
+      <div class="cap" aria-hidden="true"><h2 class="cap-title">&nbsp;</h2><p class="cap-sub">&nbsp;</p></div>
+      <div class="dots">
+        <div class="dots-head"><button class="play" type="button" data-st="idle"></button><span class="act-name">Как находит ТАФС</span><span class="dots-count"></span></div>
+        <div class="dots-row"></div>
+      </div>
+      <div class="panel chartp">
+        <canvas aria-hidden="true"></canvas>
+        <div class="alt-ctl" role="group" aria-label="Что показывать на графике">
+          <button type="button" aria-pressed="true" data-alt="0">Со схемой</button>
+          <button type="button" aria-pressed="false" data-alt="1">Без схемы</button>
+        </div>
+        <div class="legend" aria-hidden="true"><span><i class="sw sw-vol"></i>Рынок</span><span><i class="sw sw-trader"></i>Встречные заявки</span><span><i class="sw sw-bank"></i>Банк</span></div>
+      </div>
+      <div class="panel proto" data-band="0">
+        <div class="proto-head"><div class="panel-title">Протокол ТАФС</div><div class="proto-time"></div></div>
+        <div class="score">
+          <div class="score-row">
+            <span class="score-l">Риск</span>
+            <span class="score-n"><number-flow data-f="score"></number-flow><span class="score-max">из 100</span></span>
+            <span class="score-band"></span>
+          </div>
+          <div class="score-bar"><i class="score-fill"></i><b class="score-tick"></b><b class="score-tick"></b></div>
+        </div>
+        <ol class="proto-list"></ol>
+        <div class="proto-status" data-on="false"><span class="pill"><i></i>Подозрение: опережающие сделки</span></div>
+      </div>
+    </div>
+    <ol class="sr-steps visually-hidden"></ol>
+  </section>
+
+  <section class="final" id="demo" aria-labelledby="fin-h">
+    <div class="wrap">
+      <h2 id="fin-h">ТАФС делает эти проверки сама.</h2>
+      <p>В этом сценарии банк потерял <b data-v="bankLossShort">6,31 млн ₽</b>, а трейдер заработал <b data-v="traderProfit">4,13 млн ₽</b>. ТАФС оценила риск заявки в <b><span data-v="score">91</span> из 100</b> и подняла её наверх очереди комплаенса. Покажем, как это работает на ваших данных.</p>
+      <div class="cta-row">
+        <a class="btn" href="mailto:tafs@tafs.pro?subject=%D0%94%D0%B5%D0%BC%D0%BE%D0%BD%D1%81%D1%82%D1%80%D0%B0%D1%86%D0%B8%D1%8F%20%D0%A2%D0%90%D0%A4%D0%A1">Запросить демонстрацию</a>
+        <span class="mail">tafs@tafs.pro</span>
+        <button class="copy" type="button">Скопировать адрес</button>
+      </div>
+      <p class="note">Сценарий, цены, объёмы и оценка риска на этой странице смоделированы для демонстрации.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="foot"><div class="wrap">ТАФС. Атретек, 2026</div></footer>
+<script>
+/*JS*/
+</script>
+<!--/BODY-->
