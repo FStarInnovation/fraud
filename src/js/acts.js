@@ -2,6 +2,7 @@
 // поэтому прокрутка назад отматывает историю без накопленного состояния.
 import { sweepState } from './chart.js';
 import { levelSize } from './sim.js';
+import { col } from './palette.js';
 import * as F from './fmt.js';
 
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
@@ -268,7 +269,4 @@ export function detectFrame(sim, k, u, alt = 0) {
   return { chart };
 }
 
-// Цвета разметки берём из CSS-переменных (их заполняет chart.colors при старте)
-let PALETTE = {};
-export function setPalette(p) { PALETTE = p; }
-function col(name) { return PALETTE[name] || '#fff'; }
+export { setPalette } from './palette.js';

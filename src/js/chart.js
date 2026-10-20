@@ -33,9 +33,17 @@ export function sweepState(sim, e) {
 
 export function createChart(canvas, sim, opts = {}) {
   const ctx = canvas.getContext('2d');
-  const C = cssVars(['fg', 'fg-2', 'fg-3', 'line', 'line-2', 'trader', 'bank', 'breach', 'candle-up', 'candle-down', 'vol', 'panel', 'bg']);
+  const C = cssVars(['fg', 'fg-2', 'fg-3', 'line', 'line-2', 'trader', 'bank', 'accent', 'breach', 'candle-up', 'candle-down', 'vol', 'panel', 'panel-2', 'bg']);
   const FONT = '"Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif';
   const reduce = !!opts.reduce;
+  // сегменты объёма свечи: [{q, color, alpha?, overlay?}] — overlay рисуется поверх предыдущего сегмента от его основания
+  const volumes = opts.volumes || ((c, s) => [{ q: s.vM, color: C.vol }, { q: s.vB, color: C.bank }, { q: s.vT, color: C.trader }]);
+  // подписи оси времени: [{x, label, line?}]
+  const xTicks = opts.xTicks || ((x0, x1, narrow) => {
+    const span = x1 - x0, every = span > 40 ? 15 : span > 18 ? 5 : 2, out = [];
+    for (let mnt = Math.ceil(x0 / every) * every; mnt <= x1; mnt += every) out.push({ x: mnt, label: F.clock(sim.sc.sessionStart, mnt) });
+    return out;
+  });
   let W = 0, H = 0, dpr = 1;
   let view = null;
   const smooth = { p: null, v: null };
@@ -70,13 +78,22 @@ export function createChart(canvas, sim, opts = {}) {
     }
     if (t <= c.i) return null;
     const f = Math.min(1, t - c.i);
-    if (f >= 1) return { o: c.open, h: c.high, l: c.low, c: c.close, vM: c.vMarket, vB: c.vBank, vT: c.vTrader };
+    if (f >= 1) return { o: c.open, h: c.high, l: c.low, c: c.close, vM: c.vMarket, vB: c.vBank, vT: c.vTrader, f: 1 };
     const seg = f * 3, k = Math.min(2, Math.floor(seg)), u = seg - k;
     const cur = lerp(c.path[k], c.path[k + 1], u);
     let hi = c.open, lo = c.open;
     for (let j = 1; j <= k; j++) { hi = Math.max(hi, c.path[j]); lo = Math.min(lo, c.path[j]); }
     hi = Math.max(hi, cur); lo = Math.min(lo, cur);
-    return { o: c.open, h: hi, l: lo, c: cur, vM: c.vMarket * f, vB: c.vBank * f, vT: c.vTrader * f };
+    return { o: c.open, h: hi, l: lo, c: cur, vM: c.vMarket * f, vB: c.vBank * f, vT: c.vTrader * f, f };
+  }
+
+  // значение ряда (например, индекса) в момент t: между закрытиями соседних баров
+  function seriesAt(arr, t) {
+    const i = Math.floor(t);
+    if (i < 0) return arr[0];
+    if (i >= arr.length - 1) return arr[arr.length - 1];
+    const prev = i === 0 ? sim.P.basePrice : arr[i - 1];
+    return lerp(prev, arr[i], clamp(t - i));
   }
 
   function text(str, x, y, { size = 12, weight = 500, color = C['fg-2'], align = 'left', base = 'alphabetic', halo = true, alpha = 1 } = {}) {
@@ -144,6 +161,9 @@ export function createChart(canvas, sim, opts = {}) {
     if (modes.candles > 0.01) again = drawCandles(v, pad, narrow, snap, modes.candles) || again;
     if (modes.hist > 0.01) drawHist(v, pad, narrow, modes.hist);
     if (modes.timeline > 0.01) drawTimeline(v, pad, narrow, modes.timeline);
+    if (modes.heat > 0.01) drawHeat(v, pad, narrow, modes.heat);
+    if (modes.dist > 0.01) drawDist(v, pad, narrow, modes.dist);
+    if (modes.graph > 0.01) drawGraph(v, pad, narrow, modes.graph);
     return again;
   }
 
@@ -174,15 +194,23 @@ export function createChart(canvas, sim, opts = {}) {
     for (const [c, s] of states) {
       if (c.i + 1 < x0 || c.i > x1) continue;
       lo = Math.min(lo, s.l); hi = Math.max(hi, s.h);
-      vmax = Math.max(vmax, s.vM + s.vB + s.vT);
+      vmax = Math.max(vmax, volumes(c, s, v).reduce((sum, g) => sum + (g.overlay ? 0 : g.q), 0));
     }
     if (!isFinite(lo)) { lo = 99.5; hi = 100.5; }
+    const idx = v.index && v.index.a > 0.01 && sim.index ? v.index : null;
+    if (idx && idx.domain !== false) {
+      for (let i = Math.max(0, Math.floor(x0)); i <= Math.min(sim.index.length - 1, Math.ceil(x1), Math.floor(v.t)); i++) {
+        const y = sim.index[i];
+        if (y > hi) hi = hi + (y - hi) * idx.a; if (y < lo) lo = lo + (y - lo) * idx.a;
+      }
+    }
     let elo = lo, ehi = hi;
     for (const mk of v.marks || []) {
       if (!mk.prices) continue;
+      const da = clamp(mk.domainA ?? mk.a);
       for (const p of mk.prices) {
-        if (p > ehi) ehi = Math.max(ehi, hi + (p - hi) * clamp(mk.a));
-        if (p < elo) elo = Math.min(elo, lo + (p - lo) * clamp(mk.a));
+        if (p > ehi) ehi = Math.max(ehi, hi + (p - hi) * da);
+        if (p < elo) elo = Math.min(elo, lo + (p - lo) * da);
       }
     }
     const range = Math.max(ehi - elo, 1.6);
@@ -220,12 +248,11 @@ export function createChart(canvas, sim, opts = {}) {
     ctx.strokeStyle = C['line-2']; ctx.beginPath(); ctx.moveTo(pad.l, vBase + 0.5); ctx.lineTo(pad.l + plotW, vBase + 0.5); ctx.stroke();
 
     // шкала времени
-    const span = x1 - x0;
-    const every = span > 40 ? 15 : span > 18 ? 5 : 2;
-    for (let mnt = Math.ceil(x0 / every) * every; mnt <= x1; mnt += every) {
-      const x = xs(mnt);
-      if (x < pad.l + 12 || x > pad.l + plotW - 12) continue;
-      text(F.clock(sim.sc.sessionStart, mnt), x, H - 8, { size: 11, color: C['fg-3'], align: 'center', halo: false });
+    for (const tk of xTicks(x0, x1, narrow)) {
+      const x = xs(tk.x);
+      if (tk.line && x > pad.l && x < pad.l + plotW) { ctx.strokeStyle = C['line-2']; ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, pad.t); ctx.lineTo(Math.round(x) + 0.5, vBase); ctx.stroke(); }
+      if (!tk.label || x < pad.l - 2 || x > pad.l + plotW - 12) continue;
+      text(tk.label, tk.align === 'left' ? x + 6 : x, H - 8, { size: 11, color: C['fg-3'], align: tk.align || 'center', halo: false });
     }
 
     // полосы (зоны) под свечами
@@ -253,17 +280,26 @@ export function createChart(canvas, sim, opts = {}) {
         const yt = ys(Math.max(s.o, s.c)), yb = ys(Math.min(s.o, s.c));
         ctx.fillStyle = col;
         roundRect(cx - bodyW / 2, yt, bodyW, Math.max(1.5, yb - yt), 1.5); ctx.fill();
-        // объём: рынок / банк / трейдер, с зазором между сегментами
-        let y = vBase;
-        const segs = [[s.vM, C.vol], [s.vB, C.bank], [s.vT, C.trader]];
+        // объём: сегменты по участникам, с зазором между сегментами
+        let y = vBase, prevBase = vBase;
+        const segs = volumes(c, s, v);
+        const rest = (j) => segs.slice(j + 1).reduce((sum, g) => sum + (g.overlay ? 0 : g.q), 0);
         for (let j = 0; j < segs.length; j++) {
-          const [q, color] = segs[j];
-          if (q <= 0) continue;
+          const { q, color, overlay } = segs[j];
+          const ga = segs[j].alpha ?? 1;
+          if (q <= 0 || ga <= 0.01) continue;
           const h = vBase - yv(q);
+          if (overlay) {
+            // поверх предыдущего сегмента, от его основания
+            ctx.save(); ctx.globalAlpha *= ga; ctx.fillStyle = color;
+            roundRect(cx - bodyW / 2, prevBase - Math.max(1, h), bodyW, Math.max(1, h), 1.5); ctx.fill(); ctx.restore();
+            continue;
+          }
           const g = y < vBase ? 1 : 0;
           const hh = Math.max(1, h - g);
-          ctx.fillStyle = color;
-          roundRect(cx - bodyW / 2, y - g - hh, bodyW, hh, j === 0 && (s.vB + s.vT) > 0 ? 0 : 1.5); ctx.fill();
+          ctx.save(); ctx.globalAlpha *= ga; ctx.fillStyle = color;
+          roundRect(cx - bodyW / 2, y - g - hh, bodyW, hh, j === 0 && rest(j) > 0 ? 0 : 1.5); ctx.fill(); ctx.restore();
+          prevBase = y - g;
           y = y - g - hh;
         }
       }
@@ -271,6 +307,28 @@ export function createChart(canvas, sim, opts = {}) {
     drawSet(states, 1 - alt);
     if (altStates) drawSet(altStates, alt);
     ctx.globalAlpha = alpha;
+
+    // линия индекса (приведён к цене на начало)
+    if (idx) {
+      const i0 = Math.max(0, Math.floor(x0)), i1 = Math.min(sim.index.length - 1, Math.ceil(x1));
+      const tEnd = Math.min(v.t, sim.index.length);
+      ctx.save(); ctx.globalAlpha = alpha * idx.a * 0.8; ctx.strokeStyle = idx.color || C['fg-3']; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.rect(pad.l, pad.t - 4, plotW, priceH + 8); ctx.clip();
+      ctx.beginPath();
+      let started = false, lx = 0, ly = 0;
+      const pt = (tt, yy) => { const x = xs(tt); if (!started) { ctx.moveTo(x, ys(yy)); started = true; } else ctx.lineTo(x, ys(yy)); lx = x; ly = ys(yy); };
+      // точки — закрытия баров в их центрах; кончик линии идёт за временем t
+      const tip = tEnd - 0.5;
+      for (let i = i0; i <= i1; i++) { if (i + 0.5 > tip) break; pt(i + 0.5, sim.index[i]); }
+      if (tip > i0 + 0.5 && tip < i1 + 0.5) pt(tip, seriesAt(sim.index, tip + 0.5));
+      ctx.stroke();
+      if (started && idx.label) {
+        ctx.fillStyle = idx.color || C['fg-3']; ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI * 2); ctx.fill();
+        const fits = lx + 10 + 60 < pad.l + plotW;
+        text(narrow && idx.labelShort != null ? idx.labelShort : idx.label, fits ? lx + 10 : lx - 10, ly, { size: narrow ? 10.5 : 12, weight: 550, color: C['fg-2'], align: fits ? 'left' : 'right', base: 'middle' });
+      }
+      ctx.restore();
+    }
 
     // разметка
     for (const mk of v.marks || []) drawMark(mk, xs, ys, yv, pad, plotW, narrow, mk.set === 'cf' && altStates ? altStates : states);
@@ -301,7 +359,7 @@ export function createChart(canvas, sim, opts = {}) {
   function drawMark(mk, xs, ys, yv, pad, plotW, narrow, states) {
     const v = view;
     const a = mk.a ?? 1;
-    if (a <= 0.01) return;
+    if (a <= 0.01 || (narrow && mk.hideNarrow)) return;
     const right = pad.l + plotW;
     switch (mk.type) {
       case 'hline': {
@@ -349,18 +407,78 @@ export function createChart(canvas, sim, opts = {}) {
         break;
       }
       case 'chevrons': {
-        ctx.save(); ctx.globalAlpha *= a; ctx.strokeStyle = C.fg; ctx.lineWidth = 1.5;
+        const down = mk.dir === 'down';
+        const pick = (c) => c.i >= mk.from && c.i < mk.to && (!mk.only || mk.only(c));
+        ctx.save(); ctx.globalAlpha *= a; ctx.strokeStyle = mk.color || C.fg; ctx.lineWidth = 1.5;
         for (const [c, s] of states) {
-          if (c.i < mk.from || c.i >= mk.to) continue;
-          const x = xs(c.i + 0.5), y = ys(s.h) - 12;
-          ctx.beginPath(); ctx.moveTo(x - 4, y + 3); ctx.lineTo(x, y - 2); ctx.lineTo(x + 4, y + 3); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(x - 4, y + 8); ctx.lineTo(x, y + 3); ctx.lineTo(x + 4, y + 8); ctx.stroke();
+          if (!pick(c)) continue;
+          const x = xs(c.i + 0.5);
+          if (x < pad.l || x > right) continue;
+          if (down) {
+            const y = ys(s.l) + 12;
+            ctx.beginPath(); ctx.moveTo(x - 4, y - 3); ctx.lineTo(x, y + 2); ctx.lineTo(x + 4, y - 3); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x - 4, y - 8); ctx.lineTo(x, y - 3); ctx.lineTo(x + 4, y - 8); ctx.stroke();
+          } else {
+            const y = ys(s.h) - 12;
+            ctx.beginPath(); ctx.moveTo(x - 4, y + 3); ctx.lineTo(x, y - 2); ctx.lineTo(x + 4, y + 3); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x - 4, y + 8); ctx.lineTo(x, y + 3); ctx.lineTo(x + 4, y + 8); ctx.stroke();
+          }
         }
         ctx.restore();
         if (mk.label) {
-          let low = -Infinity;
-          for (const [c, s] of states) if (c.i >= mk.from && c.i < mk.to) low = Math.max(low, ys(s.l));
-          if (isFinite(low)) text(mk.label, xs(mk.from + (mk.to - mk.from) * 0.55), low + 26, { size: narrow ? 12 : 14, weight: 600, color: C.fg, align: 'left', alpha: a });
+          let low = -Infinity, top = Infinity;
+          for (const [c, s] of states) if (pick(c)) { low = Math.max(low, ys(s.l)); top = Math.min(top, ys(s.h)); }
+          const lx = xs(mk.from + (mk.to - mk.from) * (mk.labelAt ?? 0.55));
+          if (down && isFinite(top)) text(mk.label, lx, top - 14, { size: narrow ? 12 : 14, weight: 600, color: C.fg, align: mk.labelAlign || 'left', alpha: a });
+          else if (isFinite(low)) text(mk.label, lx, low + 26, { size: narrow ? 12 : 14, weight: 600, color: C.fg, align: mk.labelAlign || 'left', alpha: a });
+        }
+        break;
+      }
+      case 'block': {
+        // сделка вне основных торгов: метка на уровне цены, столбик объёма уходит за край шкалы
+        const x = xs(mk.bar), y = ys(mk.price);
+        const top = yv(smooth.v), base = yv(0);
+        ctx.save(); ctx.globalAlpha *= a;
+        const color = mk.color || C.bank;
+        const grow = clamp(mk.grow ?? 1);
+        const bw = Math.max(6, Math.min(14, (xs(1) - xs(0)) * 0.8));
+        // столбик объёма с «разрывом» наверху
+        const hFull = (base - top + 6) * grow;
+        ctx.fillStyle = color;
+        roundRect(x - bw / 2, base - hFull, bw, hFull, 1.5); ctx.fill();
+        if (grow > 0.98) {
+          ctx.strokeStyle = C.panel; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.moveTo(x - bw / 2 - 2, top + 10); ctx.lineTo(x + bw / 2 + 2, top + 5); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x - bw / 2 - 2, top + 15); ctx.lineTo(x + bw / 2 + 2, top + 10); ctx.stroke();
+        }
+        // линия к цене и ромб
+        ctx.setLineDash([3, 3]); ctx.strokeStyle = color; ctx.lineWidth = 1.25;
+        ctx.beginPath(); ctx.moveTo(x, y + 8); ctx.lineTo(x, base - hFull); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(x, y - 8); ctx.lineTo(x + 8, y); ctx.lineTo(x, y + 8); ctx.lineTo(x - 8, y); ctx.closePath(); ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = C.panel; ctx.stroke();
+        ctx.restore();
+        if (mk.label) {
+          ctx.save(); ctx.font = `600 ${narrow ? 12 : 13.5}px ${FONT}`; const lw = ctx.measureText(mk.label).width; ctx.restore();
+          const fits = x + 16 + lw < right;
+          const lx = fits ? x + 16 : x - 16, al = fits ? 'left' : 'right';
+          const ly = y - (mk.labelBelow ? -18 : 6);
+          text(mk.label, lx, ly, { size: narrow ? 12 : 13.5, weight: 600, color: C.fg, align: al, alpha: a });
+          const subs = narrow && mk.subLines ? mk.subLines : mk.sub ? [mk.sub] : [];
+          subs.forEach((line, j) => text(line, lx, ly + 16 + j * 14, { size: narrow ? 10.5 : 12, color: C['fg-2'], align: al, alpha: a }));
+        }
+        break;
+      }
+      case 'dot': {
+        // точка на цене с подписью (например, восстановление)
+        const x = xs(mk.minute), y = ys(mk.price);
+        ctx.save(); ctx.globalAlpha *= a; ctx.fillStyle = mk.color || C.fg; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = C.panel; ctx.stroke(); ctx.restore();
+        if (mk.label) {
+          const al = mk.labelAlign || 'left';
+          const lx = al === 'left' ? x + 12 : x - 12;
+          const up = mk.labelAbove ? 18 : 0;
+          text(mk.label, lx, y - 4 - up, { size: narrow ? 12 : 13.5, weight: 600, color: C.fg, align: al, alpha: a });
+          if (mk.sub) text(mk.sub, lx, y + 13 - up, { size: narrow ? 10.5 : 12, color: C['fg-2'], align: al, alpha: a });
         }
         break;
       }
@@ -389,6 +507,7 @@ export function createChart(canvas, sim, opts = {}) {
           const yBot = ys(Math.min(mk.p0, mk.p1));
           let lx, ly, al = 'left';
           if (mk.labelAt === 'left') { lx = pad.l + 12; ly = yTop + (narrow ? 30 : 42); }
+          else if (mk.labelAt === 'inside') { lx = Math.max(pad.l + 12, xs(mk.m0) + 14); ly = yTop + (narrow ? 30 : 42); }
           else { lx = Math.min(right - 8, xs(mk.m1) + 14); ly = (yTop + yBot) / 2 - 4; }
           text(mk.label, lx, ly, { size: narrow ? 22 : 34, weight: 680, color: C.fg, align: al, base: 'middle', alpha: a });
           const subs = narrow && mk.subLines ? mk.subLines : mk.sub ? [mk.sub] : [];
@@ -398,17 +517,27 @@ export function createChart(canvas, sim, opts = {}) {
       }
       case 'inset': {
         // сравнение оборота: две полосы
-        const bx = pad.l + 14, by = pad.t + 4 + (narrow ? 0 : (v.topInset || 0)), bw = Math.min(narrow ? 150 : 260, plotW * 0.42);
-        ctx.save(); ctx.globalAlpha *= a;
         const rows = mk.rows;
+        const rowH = narrow ? 34 : 40;
+        const priceH = (H - pad.t - pad.b) * 0.72;
+        const bx = pad.l + 14, bw = Math.min(narrow ? 150 : 260, plotW * 0.42);
+        const by = mk.at === 'bottom-left' && !narrow ? pad.t + priceH - rows.length * rowH - (mk.note ? 22 : 6) : pad.t + 4 + (narrow ? 0 : (v.topInset || 0));
+        ctx.save(); ctx.globalAlpha *= a;
+        if (narrow) {
+          // на телефоне блок лежит поверх свечей — подложка
+          ctx.fillStyle = C.panel; ctx.globalAlpha *= 0.9;
+          roundRect(bx - 8, by - 2, bw + 96, rows.length * rowH + (mk.note ? 18 : 2), 8); ctx.fill();
+          ctx.globalAlpha = a;
+        }
         const max = Math.max(...rows.map((r) => r.value));
         rows.forEach((r, j) => {
-          const y = by + j * (narrow ? 34 : 40);
+          const y = by + j * rowH;
           text(r.label, bx, y + 10, { size: narrow ? 10.5 : 12, color: C['fg-2'], halo: false, alpha: 1 });
           const w = Math.max(3, (r.value / max) * bw * clamp((mk.grow ?? 1)));
           ctx.fillStyle = r.color; roundRect(bx, y + 16, w, narrow ? 7 : 9, 2); ctx.fill();
           text(r.text, bx + w + 8, y + 16 + (narrow ? 4 : 5), { size: narrow ? 11 : 12.5, weight: 600, color: C.fg, base: 'middle', halo: false, alpha: 1 });
         });
+        if (mk.note) text(mk.note, bx, by + rows.length * rowH + 6, { size: narrow ? 10.5 : 12, color: C['fg-2'], halo: false, alpha: 1 });
         ctx.restore();
         break;
       }
@@ -515,6 +644,214 @@ export function createChart(canvas, sim, opts = {}) {
     dimH(bx, kx, yd, `${Math.abs(big.t)}\u00a0с`, da, C.fg, narrow ? 16 : 20);
     dashed(bx, yd, bx, by - 10, C['fg-3'], da, [2, 3]);
     dashed(kx, yd, kx, ky - 10, C['fg-3'], da, [2, 3]);
+    ctx.restore();
+  }
+
+  // ---------- карта ликвидности: заявки у лучшей цены по часам ----------
+  // v.heat = { from, to, grow, annA, title, dayLabel(d), spreadLabel, depthLabel, weekFrom, weekTo, weekLabel }
+  function drawHeat(v, pad, narrow, alpha) {
+    const h = v.heat; if (!h) return;
+    const P = sim.P, B = P.barsPerDay;
+    const group = narrow ? 3 : 1;
+    const cols = [];
+    for (let i = h.from; i < h.to; i += group) {
+      let sp = 0, dp = 0, n = 0;
+      for (let j = i; j < Math.min(h.to, i + group); j++) { sp += sim.spread[j]; dp += sim.depth[j]; n++; }
+      cols.push({ i, ticks: Math.max(1, Math.round(sp / n / P.tick)), depth: dp / n });
+    }
+    const maxTicks = Math.max(...cols.map((c) => c.ticks));
+    const nAsk = 5, nBid = 5;
+    const rows = nBid + (maxTicks - 1) + nAsk; // ряды: биды, пустые ряды спреда (до maxTicks − 1), аски
+    const left = pad.l + (narrow ? 64 : 92), right = W - pad.r + (narrow ? 36 : 44);
+    const top = pad.t + (narrow ? 66 : 56), bottom = H - pad.b - (narrow ? 30 : 34);
+    const cw = (right - left) / cols.length, rh = (bottom - top) / rows;
+    const gap = Math.min(2, cw * 0.14);
+    const grow = clamp(h.grow ?? 1);
+    ctx.save(); ctx.globalAlpha = alpha;
+    text(narrow ? (h.titleShort || 'Карта ликвидности') : (h.title || 'Карта ликвидности'), pad.l + 8, pad.t + (narrow ? 24 : 6), { size: narrow ? 11.5 : 13, color: C['fg-2'], halo: false });
+    // ряды: r = 0 — лучший бид, отрицательные — биды глубже, положительные — спред и аски
+    const rowY = (r) => bottom - (r + nBid) * rh;
+    text(narrow ? 'продажа' : 'заявки на продажу', left - 10, rowY(maxTicks + nAsk - 1) + rh * nAsk / 2, { size: 11, color: C['fg-3'], align: 'right', base: 'middle', halo: false });
+    text(narrow ? 'покупка' : 'заявки на покупку', left - 10, rowY(0) + rh * nBid / 2, { size: 11, color: C['fg-3'], align: 'right', base: 'middle', halo: false });
+    // ячейки
+    const shown = Math.floor(cols.length * grow + 0.999);
+    cols.forEach((c, j) => {
+      if (j >= shown) return;
+      const x = left + j * cw;
+      const cell = (r, q) => {
+        const a = 0.05 + 0.82 * Math.pow(clamp(q / (P.depthBase * 1.1)), 1.5);
+        ctx.fillStyle = `rgba(245,245,247,${a.toFixed(3)})`;
+        roundRect(x + gap / 2, rowY(r) + gap / 2, cw - gap, rh - gap, Math.min(3, rh / 4)); ctx.fill();
+      };
+      for (let k = 0; k < nBid; k++) cell(-k, c.depth * (0.75 + 0.5 * frac(c.i * 3.1 + k)));
+      for (let k = 0; k < nAsk; k++) cell(c.ticks + k, c.depth * (0.75 + 0.5 * frac(c.i * 5.3 + k)));
+      // пустые ряды спреда — тонкая рамка
+      if (c.ticks > 1) {
+        ctx.strokeStyle = 'rgba(255,69,58,0.35)'; ctx.lineWidth = 1;
+        roundRect(x + gap / 2 + 0.5, rowY(c.ticks - 1) + gap / 2 + 0.5, cw - gap - 1, rh * (c.ticks - 1) - gap - 1, 3); ctx.stroke();
+      }
+    });
+    // дни
+    for (let i = h.from; i < h.to; i += B) {
+      const j = (i - h.from) / group, x = left + j * cw;
+      if (i > h.from) { ctx.strokeStyle = C['line-2']; ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, top - 4); ctx.lineTo(Math.round(x) + 0.5, bottom + 4); ctx.stroke(); }
+      const d = Math.floor(i / B);
+      if (!narrow || d % 2 === 0) text(h.dayLabel ? h.dayLabel(d) : String(d + 1), x + 4, bottom + 18, { size: 11, color: C['fg-3'], halo: false });
+    }
+    // неделя продаж
+    const aa = clamp(h.annA ?? 1);
+    if (h.weekFrom != null && aa > 0.01) {
+      const xa = left + ((h.weekFrom - h.from) / group) * cw, xb = left + ((h.weekTo - h.from) / group) * cw;
+      dimH(xa + 2, xb - 2, top - 14, h.weekLabel || '', aa, C.fg, narrow ? 12 : 14);
+    }
+    // спред и глубина: подписи у правого края, поверх ячеек
+    if (aa > 0.01) {
+      const lastTicks = cols[cols.length - 1].ticks;
+      const ySpread = rowY(lastTicks - 1) + rh * (lastTicks - 1) / 2;
+      const yAsk = rowY(lastTicks + nAsk - 1) + rh * nAsk / 2;
+      text(h.spreadLabel || '', right - 8, ySpread, { size: narrow ? 11.5 : 13, weight: 650, color: C.breach, align: 'right', base: 'middle', alpha: aa });
+      text(h.depthLabel || '', right - 8, yAsk, { size: narrow ? 11.5 : 13, weight: 650, color: C.fg, align: 'right', base: 'middle', alpha: aa });
+    }
+    ctx.restore();
+  }
+  function frac(x) { const s = Math.sin(x * 12.9898) * 43758.5453; return s - Math.floor(s); }
+
+  // ---------- распределение: история против эпизода ----------
+  // v.dist = { title, bins:[{x0,x1,n}], domain:[a,b], ticks:[{x,label}], axis, band:{from,to,label}, marker:{x,label,sub,color}, dim:{label}, grow, bandA, markerA, dimA }
+  function drawDist(v, pad, narrow, alpha) {
+    const D = v.dist; if (!D) return;
+    const plotW = W - pad.l - pad.r + (narrow ? 30 : 40), plotH = H - pad.t - pad.b - 26;
+    const xl = scaleLinear().domain(D.domain).range([pad.l + 8, pad.l + plotW]);
+    const maxN = Math.max(...D.bins.map((b) => b.n));
+    const top = pad.t + 54;
+    const yb = scaleLinear().domain([0, maxN * 1.05]).range([pad.t + plotH, top]);
+    const grow = clamp(D.grow ?? 1);
+    ctx.save(); ctx.globalAlpha = alpha;
+    text(D.title || '', pad.l + 8, pad.t + (narrow ? 24 : 6), { size: narrow ? 11.5 : 13, color: C['fg-2'], halo: false });
+    ctx.fillStyle = C.vol;
+    for (const b of D.bins) {
+      if (!b.n) continue;
+      const x0 = xl(b.x0) + 0.5, x1 = xl(b.x1) - 0.5;
+      const hh = (yb(0) - yb(b.n)) * grow;
+      roundRect(x0, yb(0) - hh, Math.max(1, x1 - x0), hh, 1); ctx.fill();
+    }
+    ctx.strokeStyle = C['line']; ctx.beginPath(); ctx.moveTo(pad.l + 8, yb(0) + 0.5); ctx.lineTo(pad.l + plotW, yb(0) + 0.5); ctx.stroke();
+    for (const t of D.ticks || []) text(t.label, xl(t.x), yb(0) + 17, { size: 11, color: C['fg-3'], align: 'center', halo: false });
+    if (D.axis) text(D.axis, pad.l + plotW, yb(0) + 34, { size: 11, color: C['fg-3'], align: 'right', halo: false });
+    // обычный разброс
+    const ba = clamp(D.bandA ?? 1);
+    if (D.band && ba > 0.01) {
+      const x0 = xl(D.band.from), x1 = xl(D.band.to);
+      ctx.save(); ctx.globalAlpha *= ba;
+      ctx.fillStyle = 'rgba(245,245,247,0.06)'; ctx.fillRect(x0, top - 6, x1 - x0, yb(0) - top + 6);
+      dashed(x0, top - 6, x0, yb(0), C.fg, 1, [4, 4], 1); dashed(x1, top - 6, x1, yb(0), C.fg, 1, [4, 4], 1);
+      ctx.restore();
+      text(D.band.label, (x0 + x1) / 2, top + 8, { size: narrow ? 11 : 12.5, weight: 600, color: C.fg, align: 'center', alpha: ba });
+      if (D.band.sub) text(D.band.sub, (x0 + x1) / 2, top + 25, { size: narrow ? 11 : 12, color: C['fg-2'], align: 'center', alpha: ba });
+    }
+    // эпизод
+    const ma = clamp(D.markerA ?? 1);
+    if (D.marker && ma > 0.01) {
+      const mx = xl(D.marker.x), my = yb(maxN * 0.42);
+      const color = D.marker.color || C.trader;
+      ctx.save(); ctx.globalAlpha *= ma; ctx.strokeStyle = color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(mx, yb(0)); ctx.lineTo(mx, my); ctx.stroke();
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(mx, my, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = C.bg; ctx.stroke(); ctx.restore();
+      const leftSide = D.marker.x < (D.domain[0] + D.domain[1]) / 2;
+      const lx = leftSide ? mx + 12 : mx - 12, al = leftSide ? 'left' : 'right';
+      text(D.marker.label, lx, my - 30, { size: narrow ? 11.5 : 13, weight: 600, color: C.fg, align: al, alpha: ma });
+      if (D.marker.sub) text(D.marker.sub, lx, my - 13, { size: narrow ? 11 : 12, color: C['fg-2'], align: al, alpha: ma });
+      if (D.band && D.dim) {
+        const bx = D.marker.x < D.band.from ? xl(D.band.from) : xl(D.band.to);
+        dimH(Math.min(bx, mx), Math.max(bx, mx), yb(maxN * 0.22), D.dim.label, clamp(D.dimA ?? 1), C.fg, narrow ? 18 : 24);
+      }
+    }
+    ctx.restore();
+  }
+
+  // ---------- граф связей участников ----------
+  // v.graph = { nodes:[{id,label,sub,x,y,color,kind}], edges:[{from,to,label,dashed,at,width}], reveal, legend }
+  function drawGraph(v, pad, narrow, alpha) {
+    const G = v.graph; if (!G) return;
+    const left = pad.l + 10, right = W - pad.r + (narrow ? 40 : 50);
+    const top = pad.t + (narrow ? 30 : 36), bottom = H - pad.b - (narrow ? 26 : 30);
+    const px = (x) => left + x * (right - left), py = (y) => top + y * (bottom - top);
+    const reveal = clamp(G.reveal ?? 1);
+    ctx.save(); ctx.globalAlpha = alpha;
+    ctx.font = `600 ${narrow ? 11.5 : 13}px ${FONT}`;
+    // размеры узлов
+    const box = new Map();
+    for (const n of G.nodes) {
+      ctx.font = `600 ${narrow ? 11.5 : 13}px ${FONT}`;
+      const label = narrow && n.labelShort != null ? n.labelShort : n.label;
+      const sub = narrow ? n.subShort : n.sub;
+      const w = Math.max(ctx.measureText(label).width, sub ? ctx.measureText(sub).width * 0.9 : 0) + (narrow ? 20 : 28);
+      const hh = sub ? (narrow ? 38 : 44) : (narrow ? 28 : 32);
+      box.set(n.id, { x: px(narrow && n.xn != null ? n.xn : n.x), y: py(narrow && n.yn != null ? n.yn : n.y), w, h: hh, n, label, sub });
+    }
+    const nodeA = (n) => clamp((reveal - (n.at ?? 0)) / 0.12);
+    // точка на границе прямоугольника в направлении другой точки
+    const edgePt = (b, tx, ty) => {
+      const dx = tx - b.x, dy = ty - b.y;
+      if (!dx && !dy) return { x: b.x, y: b.y };
+      const sx = (b.w / 2) / Math.abs(dx || 1e-9), sy = (b.h / 2) / Math.abs(dy || 1e-9);
+      const s = Math.min(sx, sy);
+      return { x: b.x + dx * s, y: b.y + dy * s };
+    };
+    // рёбра
+    for (const e of G.edges) {
+      const a = clamp((reveal - (e.at ?? 0)) / 0.14);
+      if (a <= 0.01) continue;
+      const A = box.get(e.from), Bx = box.get(e.to);
+      if (!A || !Bx) continue;
+      const p0 = edgePt(A, Bx.x, Bx.y), p1 = edgePt(Bx, A.x, A.y);
+      const color = e.color || (e.dashed ? C['fg-2'] : C.fg);
+      ctx.save(); ctx.globalAlpha *= a; ctx.strokeStyle = color; ctx.lineWidth = e.width || 1.25;
+      if (e.dashed) ctx.setLineDash([5, 5]);
+      ctx.beginPath(); ctx.moveTo(p0.x, p0.y);
+      // рисуем ребро постепенно
+      const t = clamp((reveal - (e.at ?? 0)) / 0.2);
+      ctx.lineTo(p0.x + (p1.x - p0.x) * t, p0.y + (p1.y - p0.y) * t); ctx.stroke();
+      ctx.restore();
+      if (e.label && t > 0.95 && !(narrow && e.hideNarrow)) {
+        const mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
+        const lines = narrow && e.labelLines ? e.labelLines : [e.label];
+        lines.forEach((ln, j) => text(ln, mx + (narrow && e.dxn != null ? e.dxn : (e.dx || 0)), my + (e.dy || 0) + j * 13 - (lines.length - 1) * 6, { size: narrow ? 10 : 11.5, weight: 500, color: e.dashed ? C['fg-2'] : C.fg, align: 'center', base: 'middle', alpha: a }));
+      }
+    }
+    // узлы
+    for (const [, b] of box) {
+      const n = b.n, a = nodeA(n);
+      if (a <= 0.01) continue;
+      ctx.save(); ctx.globalAlpha *= a;
+      const color = n.color || C['fg-3'];
+      ctx.fillStyle = C['panel-2']; ctx.strokeStyle = color; ctx.lineWidth = n.kind === 'person' ? 1.25 : 1.5;
+      if (n.kind === 'person') {
+        roundRect(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h, b.h / 2); ctx.fill(); ctx.stroke();
+        // силуэт
+        const ix = b.x - b.w / 2 + 14, iy = b.y;
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(ix, iy - 4, 3.2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(ix, iy + 6, 5.5, Math.PI, 0); ctx.fill();
+      } else {
+        roundRect(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h, 8); ctx.fill(); ctx.stroke();
+      }
+      const tx = n.kind === 'person' ? b.x + 8 : b.x;
+      text(b.label, tx, b.sub ? b.y - 7 : b.y, { size: narrow ? 11.5 : 13, weight: 600, color: C.fg, align: 'center', base: 'middle', halo: false });
+      if (b.sub) text(b.sub, tx, b.y + 9, { size: narrow ? 10 : 11, color: C['fg-2'], align: 'center', base: 'middle', halo: false });
+      ctx.restore();
+    }
+    if (G.legend) {
+      const legend = narrow && G.legendShort ? G.legendShort : G.legend;
+      const ly = H - pad.b + 2;
+      ctx.save(); ctx.strokeStyle = C.fg; ctx.lineWidth = 1.25;
+      ctx.beginPath(); ctx.moveTo(pad.l + 8, ly); ctx.lineTo(pad.l + 30, ly); ctx.stroke();
+      const w1 = text(legend[0], pad.l + 38, ly, { size: 11, color: C['fg-3'], base: 'middle', halo: false });
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = C['fg-2'];
+      ctx.beginPath(); ctx.moveTo(pad.l + 38 + w1 + 18, ly); ctx.lineTo(pad.l + 38 + w1 + 40, ly); ctx.stroke(); ctx.setLineDash([]);
+      text(legend[1], pad.l + 38 + w1 + 48, ly, { size: 11, color: C['fg-3'], base: 'middle', halo: false });
+      ctx.restore();
+    }
     ctx.restore();
   }
 
