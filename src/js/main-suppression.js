@@ -123,6 +123,7 @@ chartRef2.colors = chart2.colors;
 const protocol = createProtocol(s2.querySelector('.proto'), actDetect.steps, scenario.score);
 sim.vars.score = String(protocol.total);
 sim.vars.scoreBand = protocol.band;
+sim.vars.conclusion = scenario.conclusion ? scenario.conclusion.text : '';
 s2.querySelector('.proto-time').textContent = `${scenario.instrument}, ${scenario.params.days} торговых дней`;
 
 const stage2 = createStage(s2, actDetect.steps, {

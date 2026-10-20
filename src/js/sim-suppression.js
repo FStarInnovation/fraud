@@ -41,7 +41,7 @@ export function simulate(sc) {
   for (let d = 0; d < P.days; d++) {
     if (d < P.quietDays) dayClose.push(null);
     else if (d < P.quietDays + P.sellDays) dayClose.push(r2(base + (P.dropTo - base) * ((d - P.quietDays + 1) / P.sellDays)));
-    else dayClose.push(r2(P.dropTo + (P.recoverTo - P.dropTo) * ((d - q1 / B + 1) / (P.days - q1 / B))));
+    else dayClose.push(P.recoverCloses ? P.recoverCloses[d - q1 / B] : r2(P.dropTo + (P.recoverTo - P.dropTo) * ((d - q1 / B + 1) / (P.days - q1 / B))));
   }
 
   const dailyOthers = P.baseHourVolume * B;
@@ -74,9 +74,12 @@ export function simulate(sc) {
       sp = r2(Math.round((P.spreadBase + (P.spreadPeak - P.spreadBase) * Math.min(1, k * 1.15)) / P.tick) * P.tick);
       dp = (P.depthBase + (P.depthPeak - P.depthBase) * Math.min(1, k * 1.1)) * (0.85 + r() * 0.3);
     } else {
+      // восстановление идёт рывками: основная часть дневного хода в первые часы, дальше шум
       const dayStart = h === 0 ? open : candles[i - h].open;
       const target = dayClose[d];
-      close = h === B - 1 ? target : r2(dayStart + (target - dayStart) * ((h + 1) / B) + gauss(r) * 0.08);
+      const rw = P.recoverHourWeights || Array.from({ length: B }, () => 1 / B);
+      const wCum = rw.slice(0, h + 1).reduce((a, w) => a + w, 0);
+      close = h === B - 1 ? target : r2(dayStart + (target - dayStart) * wCum + gauss(r) * 0.14);
       const k = (i - q1) / (N - q1);
       vMarket = Math.round(P.baseHourVolume * (1.9 - 1.1 * k) * (0.6 + r() * 0.8) / 100) * 100;
       sp = r2(Math.round((P.spreadPeak + (P.spreadBase - P.spreadPeak) * Math.min(1, k * 1.4)) / P.tick) * P.tick);
@@ -155,7 +158,6 @@ export function simulate(sc) {
     matched: fills.reduce((s, f) => s + f.matched, 0),
     sigma: Math.abs(relative) / H.sigma,
     blockRatio: blockQty / dailyOthers,
-    typicalTopShare: P.typicalTopShare,
     blockBar: q1,
   };
   m.aggressorShare = m.aggressive / sold;
@@ -181,10 +183,10 @@ export function simulate(sc) {
     depthDrop: F.pct(Math.round(m.depthDrop * 20) / 20, 0),
     aggrPct: F.pct(m.aggressorShare, 0),
     matchedPct: F.pct(m.matchedShare, 0),
-    clipFull: F.int(P.clip),
+    matchedLead: String(P.matchedLeadSeconds),
+    matchedTol: F.pct(P.matchedSizeTolerance, 0),
     sigma: F.ratio(Math.round(m.sigma)),
     blockRatio: F.ratio(Math.round(m.blockRatio)),
-    typicalTopShare: F.pct(m.typicalTopShare, 0),
     soldAvg: F.price(soldAvg),
     weekTurnover: F.int(weekTurnover),
   };

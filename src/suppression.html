@@ -58,7 +58,6 @@
         <div class="book-foot">
           <div class="liq" hidden>
             <div class="liq-row liq-spread"><span class="nm">Спред</span><span class="bar"><i></i></span><b></b></div>
-            <div class="liq-row liq-depth"><span class="nm">Глубина уровня</span><span class="bar"><i></i></span><b></b></div>
           </div>
           <div class="split" hidden>
             <div class="split-top">Оборот бумаги за неделю</div>
@@ -109,7 +108,7 @@
       </div>
       <div class="panel chartp">
         <canvas aria-hidden="true"></canvas>
-        <div class="legend" aria-hidden="true"><span><i class="sw sw-vol"></i>Рынок</span><span><i class="sw sw-trader"></i><span class="long">Продажи участника</span><span class="short">Продажи</span></span><span><i class="sw sw-accent"></i><span class="long">Встречные счета</span><span class="short">Встречные</span></span><span><i class="sw sw-line"></i>Индекс</span></div>
+        <div class="legend" aria-hidden="true"><span><i class="sw sw-vol"></i>Рынок</span><span><i class="sw sw-trader"></i><span class="long">Продажи участника</span><span class="short">Продажи</span></span><span><i class="sw sw-accent"></i><span class="long">Встречные заявки</span><span class="short">Встречные</span></span><span><i class="sw sw-line"></i>Индекс</span></div>
       </div>
       <div class="panel proto proto-dense" data-band="0">
         <div class="proto-head"><div class="panel-title">Протокол ТАФС</div><div class="proto-time"></div></div>
@@ -122,7 +121,7 @@
           <div class="score-bar"><i class="score-fill"></i><b class="score-tick"></b><b class="score-tick"></b></div>
         </div>
         <ol class="proto-list"></ol>
-        <div class="proto-status" data-on="false"><span class="pill"><i></i>Подозрение: занижение цены</span></div>
+        <div class="proto-status" data-on="false"><div class="verdict"><b><i></i>Вывод ТАФС</b><p data-v="conclusion"></p></div></div>
       </div>
     </div>
     <ol class="sr-steps visually-hidden"></ol>

@@ -133,17 +133,6 @@ export function schemeFrame(sim, k, u) {
       index.a = 0.5; index.label = '';
       break;
     }
-    case 9: {
-      t = N; x1 = N + 0.5;
-      blockA = 0.6; blockGrow = 1;
-      const a = 1 - 0.55 * ramp(u, 0, 0.3);
-      marks.push({ type: 'band', m0: q0, m1: q1 + 1, p0: P.basePrice, p1: P.blockPrice, prices: [P.basePrice, P.blockPrice], color: col('breach'), fill: 0.2, a: a * 0.8, label: F.rub(m.diff, 0), labelAt: 'inside' });
-      cards.seller.fields.shares = 0; cards.seller.fields.sold = m.sold; cards.seller.fields.avg = m.soldAvg; cards.seller.badge = 'пакет продан'; cards.seller.glow = ramp(u, 0.3, 0.7);
-      cards.fund.fields.shares = m.rest; cards.fund.fields.price = P.blockPrice; cards.fund.fields.mtm = m.fundGain; cards.fund.badge = 'покупатель пакета'; cards.fund.glow = ramp(u, 0.3, 0.7);
-      link.a = ramp(u, 0.25, 0.6); link.label = 'гендиректор УК — бывший руководитель продаж инвесткомпании'; link.kind = 'people';
-      index.a = 0.5; index.label = '';
-      break;
-    }
     default: break;
   }
   if (blockA > 0.01) { const bm = blockMark(blockA, blockGrow); if (k >= 7) { bm.sub = ''; bm.subLines = null; } marks.push(bm); }
@@ -151,7 +140,7 @@ export function schemeFrame(sim, k, u) {
 
   const book = bookAt(sim, t);
   book.midLabel = 'последняя сделка';
-  book.liq = { a: liqA, spread: book.spread, depth: book.depth, spreadMax: P.spreadPeak * 1.25, depthMax: P.depthBase * 1.25 };
+  book.liq = { a: liqA, spread: book.spread, spreadMax: P.spreadPeak * 1.25 };
   book.split = { a: splitA, small: 1, trader: 1, smallShare: 1 - m.sellShare, traderShare: m.sellShare, proportional: true };
 
   const chart = { t, sweep: null, x0, x1: x1 ?? Math.max(q0 + 0.5, t + 6), marks, focus, lastTag: true, index, modes: { candles: 1 } };
@@ -190,7 +179,6 @@ function detMarks(sim, k, a) {
       out.marks.push({ type: 'inset', at: 'bottom-left', a, grow: a, rows: [
         { label: 'Инвесткомпания, продажи за неделю', value: m.sold, text: `${F.int(m.sold)}   ${F.pct(m.sellShare, 0)}`, color: col('trader') },
         { label: 'Все остальные участники', value: m.weekOthers, text: `${F.int(m.weekOthers)}   ${F.pct(1 - m.sellShare, 0)}`, color: col('vol') },
-        { label: 'Обычно крупнейший участник', value: m.weekTurnover * m.typicalTopShare, text: `до ${F.pct(m.typicalTopShare, 0)}`, color: col('fg-3') },
       ] });
       break;
     case 3:
@@ -205,9 +193,9 @@ function detMarks(sim, k, a) {
       out.focus = { from: q0, to: q1, a: a * 0.8 };
       out.matchedA = a;
       out.marks.push({ type: 'inset', at: 'bottom-left', a, grow: a, rows: [
-        { label: 'Купили Счёт А и Счёт Б', value: m.matched, text: `${F.int(m.matched)}   ${F.pct(m.matchedShare, 0)}`, color: col('accent') },
-        { label: 'Другие покупатели', value: m.sold - m.matched, text: `${F.int(m.sold - m.matched)}   ${F.pct(1 - m.matchedShare, 0)}`, color: col('vol') },
-      ], note: `клипами по ${F.int(P.clip)}, в первые часы торгов` });
+        { label: 'Встречная заявка за секунды до продажи, схожий объём', value: m.matched, text: `${F.int(m.matched)}   ${F.pct(m.matchedShare, 0)}`, color: col('accent') },
+        { label: 'Прочие покупатели', value: m.sold - m.matched, text: `${F.int(m.sold - m.matched)}   ${F.pct(1 - m.matchedShare, 0)}`, color: col('vol') },
+      ], note: `опережение до ${P.matchedLeadSeconds} с, объём ±${F.pct(P.matchedSizeTolerance, 0)}, исполнение с проскальзыванием` });
       break;
     case 6:
       out.focus = { from: q1, to: q1 + 1, a: a * 0.6 };
@@ -239,7 +227,7 @@ function graphData(sim) {
       { id: 'fund', label: N.fund, sub: `купил ${F.int(m.rest)} по ${F.price(P.blockPrice)}`, x: 0.85, y: 0.16, xn: 0.8, yn: 0.07, color: col('bank'), at: 0.08 },
       { id: 'mc', label: N.mc, labelShort: 'УК', sub: 'небольшая УК', x: 0.85, y: 0.56, xn: 0.82, yn: 0.66, color: col('bank'), at: 0.2 },
       { id: 'person', label: N.person, sub: 'до прошлого года — руководитель продаж инвесткомпании', x: 0.5, y: 0.38, xn: 0.5, yn: 0.37, color: col('fg'), kind: 'person', at: 0.35 },
-      { id: 'acc', label: N.accounts.join(' и '), labelShort: 'Счета А и Б', sub: `встречные покупки ${F.int(m.matched)}`, x: 0.5, y: 0.86, xn: 0.5, yn: 1.0, color: col('accent'), at: 0.55 },
+      { id: 'acc', label: N.counter, labelShort: 'Встречные', sub: `${F.pct(m.matchedShare, 0)} продаж: заявки за секунды до, схожий объём`, x: 0.5, y: 0.86, xn: 0.5, yn: 1.0, color: col('accent'), at: 0.55 },
     ],
     edges: [
       { from: 'seller', to: 'desk', at: 0.05 },
@@ -247,8 +235,7 @@ function graphData(sim) {
       { from: 'mc', to: 'fund', label: 'управляет', at: 0.22, dx: 34, hideNarrow: true },
       { from: 'person', to: 'mc', label: 'гендиректор', at: 0.38, dy: 12, hideNarrow: true },
       { from: 'person', to: 'seller', label: 'работал до прошлого года', labelLines: ['работал', 'раньше'], at: 0.46, dy: 12, hideNarrow: true },
-      { from: 'desk', to: 'acc', label: `встречные сделки, ${F.pct(m.matchedShare, 0)}`, labelLines: [`встречные ${F.pct(m.matchedShare, 0)}`], dashed: true, at: 0.58, dy: 12, dxn: -34 },
-      { from: 'acc', to: 'mc', label: 'тот же брокер, тот же адрес', labelLines: ['тот же брокер'], dashed: true, at: 0.72, dy: 12, dxn: 34 },
+      { from: 'desk', to: 'acc', label: 'признаки договорённости', labelLines: ['договорённость?'], dashed: true, at: 0.58, dy: 12, dxn: -30 },
     ],
     legend: ['подтверждено справочниками', 'предполагаемая связь'],
     legendShort: ['подтверждено', 'предполагается'],
@@ -279,9 +266,9 @@ export function detectFrame(sim, k, u) {
     t: m.N, sweep: null, x0, x1, marks, focus, lastTag: false, modes, index, matchedA, topInset: 34,
     heat: k === 1 ? {
       from: 0, to: m.q1, grow: ramp(u, 0.1, 0.5), annA: ramp(u, 0.55, 0.8),
-      title: 'Карта ликвидности: заявки у лучшей цены, по часам', titleShort: 'Карта ликвидности, по часам', dayLabel: (d) => `День ${d + 1}`,
+      title: 'Карта ликвидности: цена и заявки у лучшей цены, по часам', titleShort: 'Карта ликвидности', dayLabel: (d) => `День ${d + 1}`,
       weekFrom: m.q0, weekTo: m.q1, weekLabel: 'неделя продаж',
-      spreadLabel: `спред ×${F.ratio(Math.round(m.spreadX))}`, depthLabel: `глубина −${F.pct(Math.round(m.depthDrop * 20) / 20, 0)}`,
+      spreadLabel: `спред ×${F.ratio(Math.round(m.spreadX))}`, spreadSub: `${F.price(P.spreadBase)} → ${F.price(m.peakSpread)} ₽`,
     } : null,
     dist: k === 5 ? {
       title: 'Отклонение бумаги от индекса за 5 дней, вся история торгов', bins: sim.hist, domain: [-0.1, 0.1],

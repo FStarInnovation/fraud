@@ -647,8 +647,8 @@ export function createChart(canvas, sim, opts = {}) {
     ctx.restore();
   }
 
-  // ---------- карта ликвидности: заявки у лучшей цены по часам ----------
-  // v.heat = { from, to, grow, annA, title, dayLabel(d), spreadLabel, depthLabel, weekFrom, weekTo, weekLabel }
+  // ---------- карта ликвидности: цена по времени, блоки заявок у лучшей цены, растущий спред ----------
+  // v.heat = { from, to, grow, annA, title, titleShort, dayLabel(d), weekFrom, weekTo, weekLabel, spreadLabel, spreadSub }
   function drawHeat(v, pad, narrow, alpha) {
     const h = v.heat; if (!h) return;
     const P = sim.P, B = P.barsPerDay;
@@ -657,60 +657,77 @@ export function createChart(canvas, sim, opts = {}) {
     for (let i = h.from; i < h.to; i += group) {
       let sp = 0, dp = 0, n = 0;
       for (let j = i; j < Math.min(h.to, i + group); j++) { sp += sim.spread[j]; dp += sim.depth[j]; n++; }
-      cols.push({ i, ticks: Math.max(1, Math.round(sp / n / P.tick)), depth: dp / n });
+      const last = sim.candles[Math.min(h.to, i + group) - 1];
+      cols.push({ i, mid: last.close, spread: sp / n, depth: dp / n });
     }
-    const maxTicks = Math.max(...cols.map((c) => c.ticks));
-    const nAsk = 5, nBid = 5;
-    const rows = nBid + (maxTicks - 1) + nAsk; // ряды: биды, пустые ряды спреда (до maxTicks − 1), аски
-    const left = pad.l + (narrow ? 64 : 92), right = W - pad.r + (narrow ? 36 : 44);
-    const top = pad.t + (narrow ? 66 : 56), bottom = H - pad.b - (narrow ? 30 : 34);
-    const cw = (right - left) / cols.length, rh = (bottom - top) / rows;
+    const nAsk = narrow ? 4 : 5, nBid = nAsk;
+    const rh = narrow ? 6 : 11;                       // высота ячейки, px
+    const left = pad.l + 8, right = W - pad.r;
+    const top = pad.t + (narrow ? 40 : 54), bottom = H - pad.b - (narrow ? 22 : 30);
+    const block = nAsk * rh + 4;
+    let lo = Infinity, hi = -Infinity;
+    for (const c of cols) { lo = Math.min(lo, c.mid - c.spread / 2); hi = Math.max(hi, c.mid + c.spread / 2); }
+    const ys = scaleLinear().domain([lo, hi]).range([bottom - block, top + block + (narrow ? 8 : 16)]);
+    const span = (bottom - block) - (top + block);
+    const cw = (right - left) / cols.length;
     const gap = Math.min(2, cw * 0.14);
     const grow = clamp(h.grow ?? 1);
-    ctx.save(); ctx.globalAlpha = alpha;
-    text(narrow ? (h.titleShort || 'Карта ликвидности') : (h.title || 'Карта ликвидности'), pad.l + 8, pad.t + (narrow ? 24 : 6), { size: narrow ? 11.5 : 13, color: C['fg-2'], halo: false });
-    // ряды: r = 0 — лучший бид, отрицательные — биды глубже, положительные — спред и аски
-    const rowY = (r) => bottom - (r + nBid) * rh;
-    text(narrow ? 'продажа' : 'заявки на продажу', left - 10, rowY(maxTicks + nAsk - 1) + rh * nAsk / 2, { size: 11, color: C['fg-3'], align: 'right', base: 'middle', halo: false });
-    text(narrow ? 'покупка' : 'заявки на покупку', left - 10, rowY(0) + rh * nBid / 2, { size: 11, color: C['fg-3'], align: 'right', base: 'middle', halo: false });
-    // ячейки
     const shown = Math.floor(cols.length * grow + 0.999);
-    cols.forEach((c, j) => {
-      if (j >= shown) return;
-      const x = left + j * cw;
-      const cell = (r, q) => {
-        const a = 0.05 + 0.82 * Math.pow(clamp(q / (P.depthBase * 1.1)), 1.5);
-        ctx.fillStyle = `rgba(245,245,247,${a.toFixed(3)})`;
-        roundRect(x + gap / 2, rowY(r) + gap / 2, cw - gap, rh - gap, Math.min(3, rh / 4)); ctx.fill();
-      };
-      for (let k = 0; k < nBid; k++) cell(-k, c.depth * (0.75 + 0.5 * frac(c.i * 3.1 + k)));
-      for (let k = 0; k < nAsk; k++) cell(c.ticks + k, c.depth * (0.75 + 0.5 * frac(c.i * 5.3 + k)));
-      // пустые ряды спреда — тонкая рамка
-      if (c.ticks > 1) {
-        ctx.strokeStyle = 'rgba(255,69,58,0.35)'; ctx.lineWidth = 1;
-        roundRect(x + gap / 2 + 0.5, rowY(c.ticks - 1) + gap / 2 + 0.5, cw - gap - 1, rh * (c.ticks - 1) - gap - 1, 3); ctx.stroke();
-      }
-    });
+    ctx.save(); ctx.globalAlpha = alpha;
+    text(narrow ? (h.titleShort || h.title || '') : (h.title || ''), pad.l + 8, pad.t + (narrow ? 24 : 6), { size: narrow ? 11.5 : 13, color: C['fg-2'], halo: false });
+    // шкала цен справа
+    for (const p of ys.ticks(span < 110 ? 2 : narrow ? 4 : 6)) {
+      const y = Math.round(ys(p)) + 0.5;
+      if (y < top || y > bottom) continue;
+      ctx.strokeStyle = C['line-2']; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
+      text(F.price(p), W - pad.r + 10, y, { size: 11, color: C['fg-3'], base: 'middle', halo: false });
+    }
     // дни
     for (let i = h.from; i < h.to; i += B) {
-      const j = (i - h.from) / group, x = left + j * cw;
+      const x = left + ((i - h.from) / group) * cw;
       if (i > h.from) { ctx.strokeStyle = C['line-2']; ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, top - 4); ctx.lineTo(Math.round(x) + 0.5, bottom + 4); ctx.stroke(); }
       const d = Math.floor(i / B);
       if (!narrow || d % 2 === 0) text(h.dayLabel ? h.dayLabel(d) : String(d + 1), x + 4, bottom + 18, { size: 11, color: C['fg-3'], halo: false });
     }
-    // неделя продаж
+    // блоки заявок: аски над лучшей ценой продажи, биды под лучшей ценой покупки, между ними — спред
+    const cell = (x, y, q, seed) => {
+      const a = 0.05 + 0.82 * Math.pow(clamp(q * (0.75 + 0.5 * frac(seed)) / (P.depthBase * 1.1)), 1.5);
+      ctx.fillStyle = `rgba(245,245,247,${a.toFixed(3)})`;
+      roundRect(x + gap / 2, y + gap / 2, cw - gap, rh - gap, Math.min(3, rh / 4)); ctx.fill();
+    };
+    for (let j = 0; j < shown; j++) {
+      const c = cols[j], x = left + j * cw;
+      const yAsk = ys(c.mid + c.spread / 2), yBid = ys(c.mid - c.spread / 2);
+      for (let k = 0; k < nAsk; k++) cell(x, yAsk - (k + 1) * rh, c.depth, c.i * 5.3 + k);
+      for (let k = 0; k < nBid; k++) cell(x, yBid + k * rh, c.depth, c.i * 3.1 + k);
+      // спред — красный зазор между блоками
+      const sh = Math.max(2, yBid - yAsk);
+      ctx.fillStyle = 'rgba(255,69,58,0.42)';
+      ctx.fillRect(x + gap / 2, yAsk, cw - gap, sh);
+    }
+    // цена по времени
+    if (shown > 1) {
+      ctx.strokeStyle = C.fg; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.beginPath();
+      for (let j = 0; j < shown; j++) { const x = left + (j + 0.5) * cw, y = ys(cols[j].mid); if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+    // неделя продаж и подпись спреда
     const aa = clamp(h.annA ?? 1);
     if (h.weekFrom != null && aa > 0.01) {
       const xa = left + ((h.weekFrom - h.from) / group) * cw, xb = left + ((h.weekTo - h.from) / group) * cw;
-      dimH(xa + 2, xb - 2, top - 14, h.weekLabel || '', aa, C.fg, narrow ? 12 : 14);
+      let yTop = Infinity;
+      for (let j = 0; j < cols.length; j++) { const x = left + j * cw; if (x >= xa - 1 && x < xb) yTop = Math.min(yTop, ys(cols[j].mid + cols[j].spread / 2) - nAsk * rh); }
+      dimH(xa + 2, xb - 2, (isFinite(yTop) ? yTop : top) - 14, h.weekLabel || '', aa, C.fg, narrow ? 12 : 14);
     }
-    // спред и глубина: подписи у правого края, поверх ячеек
-    if (aa > 0.01) {
-      const lastTicks = cols[cols.length - 1].ticks;
-      const ySpread = rowY(lastTicks - 1) + rh * (lastTicks - 1) / 2;
-      const yAsk = rowY(lastTicks + nAsk - 1) + rh * nAsk / 2;
-      text(h.spreadLabel || '', right - 8, ySpread, { size: narrow ? 11.5 : 13, weight: 650, color: C.breach, align: 'right', base: 'middle', alpha: aa });
-      text(h.depthLabel || '', right - 8, yAsk, { size: narrow ? 11.5 : 13, weight: 650, color: C.fg, align: 'right', base: 'middle', alpha: aa });
+    if (aa > 0.01 && cols.length) {
+      const c = cols[cols.length - 1];
+      const yAskTop = ys(c.mid + c.spread / 2) - nAsk * rh;
+      const lx = right - 2, ly = yAskTop - (narrow ? 22 : 26);
+      text(h.spreadLabel || '', lx, ly, { size: narrow ? 11.5 : 13, weight: 650, color: C.breach, align: 'right', base: 'middle', alpha: aa });
+      if (h.spreadSub) text(h.spreadSub, lx, ly + 16, { size: narrow ? 10.5 : 11.5, color: C['fg-2'], align: 'right', base: 'middle', alpha: aa });
+      const c0 = cols[0];
+      const y0 = (ys(c0.mid + c0.spread / 2) + ys(c0.mid - c0.spread / 2)) / 2;
+      text('спред', left + cw * 1.5 + 6, y0, { size: narrow ? 10.5 : 11.5, color: C['fg-2'], base: 'middle', alpha: aa });
     }
     ctx.restore();
   }

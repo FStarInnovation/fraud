@@ -108,9 +108,9 @@ export function createBook(root) {
       gauge.style.opacity = String(s.liq.a);
       gauge.hidden = s.liq.a <= 0.01;
       gauge.querySelector('.liq-spread b').textContent = F.price(s.liq.spread) + ' ₽';
-      gauge.querySelector('.liq-depth b').textContent = F.int(s.liq.depth);
       gauge.querySelector('.liq-spread i').style.transform = `scaleX(${clamp(s.liq.spread / s.liq.spreadMax)})`;
-      gauge.querySelector('.liq-depth i').style.transform = `scaleX(${clamp(s.liq.depth / s.liq.depthMax)})`;
+      const dep = gauge.querySelector('.liq-depth');
+      if (dep && s.liq.depth != null) { dep.querySelector('b').textContent = F.int(s.liq.depth); dep.querySelector('i').style.transform = `scaleX(${clamp(s.liq.depth / s.liq.depthMax)})`; }
       gauge.dataset.warn = s.liq.spread > s.liq.spreadMax * 0.5 ? 'spread' : '';
     }
   }
