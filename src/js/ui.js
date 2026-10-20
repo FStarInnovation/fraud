@@ -86,19 +86,73 @@ export function createBook(root) {
     for (const [k, el] of rows) if (!used.has(k)) { el.remove(); rows.delete(k); }
     const mp = F.price(s.price);
     if (midPx.textContent !== mp) midPx.textContent = mp;
-    bo.style.opacity = String(s.bank.a);
-    bo.hidden = s.bank.a <= 0.01;
-    boQ.textContent = `${F.int(s.bank.V)} из ${F.int(s.bank.total)}`;
-    boBar.style.transform = `scaleX(${s.bank.total ? s.bank.V / s.bank.total : 0})`;
-    split.style.opacity = String(s.split.a);
-    split.hidden = s.split.a <= 0.01;
-    sM.style.transform = `scaleX(${s.split.small})`;
-    sT.style.transform = `scaleX(${s.split.trader})`;
-    sMv.textContent = F.pct(s.split.smallShare, 0);
-    sTv.textContent = F.pct(s.split.traderShare, 0);
+    const midL = root.querySelector('.mid-l');
+    if (s.midLabel != null && midL && midL.textContent !== s.midLabel) midL.textContent = s.midLabel;
+    if (bo && s.bank) {
+      bo.style.opacity = String(s.bank.a);
+      bo.hidden = s.bank.a <= 0.01;
+      boQ.textContent = `${F.int(s.bank.V)} из ${F.int(s.bank.total)}`;
+      boBar.style.transform = `scaleX(${s.bank.total ? s.bank.V / s.bank.total : 0})`;
+    }
+    if (split && s.split) {
+      split.style.opacity = String(s.split.a);
+      split.hidden = s.split.a <= 0.01;
+      sM.style.transform = `scaleX(${s.split.small})`;
+      sT.style.transform = `scaleX(${s.split.trader})`;
+      if (s.split.proportional) sM.parentElement.style.flex = `0 0 ${(s.split.smallShare * 100).toFixed(1)}%`;
+      sMv.textContent = F.pct(s.split.smallShare, 0);
+      sTv.textContent = F.pct(s.split.traderShare, 0);
+    }
+    const gauge = root.querySelector('.liq');
+    if (gauge && s.liq) {
+      gauge.style.opacity = String(s.liq.a);
+      gauge.hidden = s.liq.a <= 0.01;
+      gauge.querySelector('.liq-spread b').textContent = F.price(s.liq.spread) + ' ₽';
+      gauge.querySelector('.liq-spread i').style.transform = `scaleX(${clamp(s.liq.spread / s.liq.spreadMax)})`;
+      const dep = gauge.querySelector('.liq-depth');
+      if (dep && s.liq.depth != null) { dep.querySelector('b').textContent = F.int(s.liq.depth); dep.querySelector('i').style.transform = `scaleX(${clamp(s.liq.depth / s.liq.depthMax)})`; }
+      gauge.dataset.warn = s.liq.spread > s.liq.spreadMax * 0.5 ? 'spread' : '';
+    }
   }
 
   return { update, capacity };
+}
+
+// ---------- стороны сделки (вторая схема): карточки с произвольными полями ----------
+// spec: { cards: { key: { fields: { f: {decimals, suffix, sign} } } } }; кадр: { cards: { key: { glow, badge, fields: {f: value|null} } }, link: {a, label} }
+export function createParties(root, spec) {
+  const cards = {};
+  for (const key of Object.keys(spec.cards)) {
+    const el = root.querySelector(`.acc-${key}`);
+    const fields = {};
+    for (const [f, o] of Object.entries(spec.cards[key].fields)) {
+      const nf = el.querySelector(`[data-f="${f}"]`);
+      fields[f] = { flow: flow(nf, o), slot: nf.closest('[data-slot]') };
+    }
+    cards[key] = { el, fields, badge: el.querySelector('.badge') };
+  }
+  const link = root.querySelector('.leak');
+  const linkText = link && link.querySelector('span');
+  function update(s) {
+    for (const [key, st] of Object.entries(s.cards)) {
+      const c = cards[key]; if (!c) continue;
+      c.el.style.setProperty('--glow', String(st.glow || 0));
+      if (c.badge) { const b = st.badge || ''; if (c.badge.textContent !== b) c.badge.textContent = b; c.badge.style.opacity = b ? '1' : '0'; }
+      for (const [f, val] of Object.entries(st.fields || {})) {
+        const fe = c.fields[f]; if (!fe) continue;
+        const on = val != null;
+        if (fe.slot && fe.slot.dataset.on !== String(on)) fe.slot.dataset.on = String(on);
+        if (on) fe.flow(val);
+      }
+      if (st.tone !== undefined) c.el.dataset.tone = st.tone || '';
+    }
+    if (link && s.link) {
+      link.style.setProperty('--a', String(s.link.a));
+      if (linkText && s.link.label != null && linkText.textContent !== s.link.label) linkText.textContent = s.link.label;
+      link.dataset.kind = s.link.kind || '';
+    }
+  }
+  return { update };
 }
 
 // ---------- счета ----------
@@ -163,7 +217,14 @@ export function createProtocol(root, items, score) {
     let sum = 0;
     els.forEach((li, j) => {
       const st = j < k ? 'done' : j === k ? (u > 0.25 ? 'now' : 'pending') : 'pending';
-      if (li.dataset.st !== st) li.dataset.st = st;
+      if (li.dataset.st !== st) {
+        li.dataset.st = st;
+        // на телефоне список может не помещаться — подкручиваем к текущей проверке
+        if (st === 'now' && list.scrollHeight > list.clientHeight + 2) {
+          const want = li.offsetTop - list.offsetTop - (list.clientHeight - li.offsetHeight) / 2;
+          list.scrollTop = Math.max(0, want);
+        }
+      }
       const counted = j < k || (j === k && u > 0.45);
       if (counted) sum += items[j].points || 0;
       const pst = counted ? 'on' : 'off';

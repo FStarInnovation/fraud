@@ -1,17 +1,15 @@
-// Сборка: один самодостаточный HTML (скрипты, стили и шрифты внутри — работает без внешних CDN).
-//   dist/index.html    — полный документ для сайта
-//   dist/preview.html  — тот же контент без <html>/<head>/<body> (для превью-артефакта)
+// Сборка: самодостаточные HTML-страницы (скрипты, стили и шрифты внутри — работают без внешних CDN).
+//   dist/index.html     — весь сайт: первый экран, библиотека, схемы по порядку, финал
+//   dist/preview.html   — тот же контент без <html>/<head>/<body> (для превью-артефакта)
 import { build, transform } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const src = (p) => new URL('./src/' + p, import.meta.url);
 mkdirSync(new URL('./dist/', import.meta.url), { recursive: true });
 
-const js = (await build({
-  entryPoints: [src('js/main.js').pathname],
-  bundle: true, minify: true, format: 'iife', target: ['es2020', 'safari15'], write: false,
-  legalComments: 'none', loader: { '.json': 'json' },
-})).outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+const PAGES = [
+  { tpl: 'index.html', entry: 'js/main.js', out: 'index.html', preview: 'preview.html' },
+];
 
 const css = (await transform(readFileSync(src('styles.css'), 'utf8'), { loader: 'css', minify: true, target: ['chrome100', 'safari15'] })).code;
 
@@ -25,12 +23,21 @@ const fonts = [
   font('inter-rub-opsz-normal.woff2', 'U+20BD'),
 ].join('\n');
 
-let tpl = readFileSync(src('index.html'), 'utf8');
-tpl = tpl.replace('/*FONTS*/', () => fonts).replace('/*CSS*/', () => css).replace('/*JS*/', () => js);
-const head = tpl.split('<!--HEAD-->')[1].split('<!--/HEAD-->')[0].trim();
-const body = tpl.split('<!--BODY-->')[1].split('<!--/BODY-->')[0].trim();
+const kb = (s) => (Buffer.byteLength(s) / 1024).toFixed(0) + ' КБ';
 
-const full = `<!doctype html>
+for (const page of PAGES) {
+  const js = (await build({
+    entryPoints: [src(page.entry).pathname],
+    bundle: true, minify: true, format: 'iife', target: ['es2020', 'safari15'], write: false,
+    legalComments: 'none', loader: { '.json': 'json' },
+  })).outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+
+  let tpl = readFileSync(src(page.tpl), 'utf8');
+  tpl = tpl.replace('/*FONTS*/', () => fonts).replace('/*CSS*/', () => css).replace('/*JS*/', () => js);
+  const head = tpl.split('<!--HEAD-->')[1].split('<!--/HEAD-->')[0].trim();
+  const body = tpl.split('<!--BODY-->')[1].split('<!--/BODY-->')[0].trim();
+
+  const full = `<!doctype html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -43,7 +50,7 @@ ${body}
 </body>
 </html>
 `;
-writeFileSync(new URL('./dist/index.html', import.meta.url), full);
-writeFileSync(new URL('./dist/preview.html', import.meta.url), `${head}\n${body}\n`);
-const kb = (s) => (Buffer.byteLength(s) / 1024).toFixed(0) + ' КБ';
-console.log('dist/index.html', kb(full), '| JS', kb(js), '| CSS', kb(css), '| шрифты', kb(fonts));
+  writeFileSync(new URL('./dist/' + page.out, import.meta.url), full);
+  writeFileSync(new URL('./dist/' + page.preview, import.meta.url), `${head}\n${body}\n`);
+  console.log(`dist/${page.out}`, kb(full), '| JS', kb(js), '| CSS', kb(css), '| шрифты', kb(fonts));
+}
