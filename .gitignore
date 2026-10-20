@@ -2,4 +2,4 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.log
-dist/preview*.html
+docs/preview*.html
